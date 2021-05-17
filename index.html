@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<title>Projet WebGL 2019 - Université de Limoges</title>
+		
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<script src="http://threejs.org/build/three.min.js"></script>
+		<script src="http://threejs.org/examples/js/loaders/OBJLoader.js"></script>
+		<script type="text/javascript" src="dat.gui-master/build/dat.gui.min.js"></script>
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+
+	<body>
+
+		<!--On a supprime cet en tete car il se mettait par dessus dat.gui
+		<div id="info">
+			Projet WebGL 2019 - Université de Limoges
+		</div>
+		-->
+
+		<script type="x-shader/x-vertex" id="vertexshader">
+
+			attribute float size;
+
+			varying vec3 vColor;
+			varying float posZ;
+
+			void main() {
+
+				vColor = color;
+
+				posZ = position.z;
+
+				vec4 mvPosition = modelViewMatrix * vec4( position.x,position.y,position.z, 1.0 );
+				//On augmente la taille des particules de fumee selon leur hauteur et on divise la size par mvposition.z
+				//Pour que les particules diminuent en taille selon la distance avec la camera
+				gl_PointSize = size * ( 70.0 / -mvPosition.z )+ (posZ-60.0)*0.07;
+				gl_Position = projectionMatrix * mvPosition;
+				
+
+			}
+
+		</script>
+
+		<script type="x-shader/x-fragment" id="fragmentshader">
+
+			uniform sampler2D pointTexture;
+			varying float posZ;
+			float alpha;
+
+
+			void main() {
+				//On met une transparence de base et on l'augmente selon la hauteur
+				alpha = log(posZ-55.0)*0.06+0.7;
+
+				gl_FragColor = vec4( 0.5,0.5,0.5, 1.0-alpha );
+
+				gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+
+			}
+
+		</script>
+
+		<script type="x-shader/x-vertex" id="vertexshadersand">
+
+			attribute float size;
+
+			varying vec3 vColor;
+
+			void main() {
+
+				vColor = color;
+
+				//Ici pas de travail sur la position on le fait dans le animate car le rendu avec des cos n'etait pas artistiquement satisfaisant
+				vec4 mvPosition = modelViewMatrix * vec4( position.x,position.y,position.z, 1.0 );
+
+				gl_PointSize = 500.0/ -mvPosition.z ;
+
+				gl_Position = projectionMatrix * mvPosition;
+				
+
+			}
+
+		</script>
+
+		<script type="x-shader/x-fragment" id="fragmentshadersand">
+
+			uniform sampler2D pointTexture;
+
+
+			void main() {
+
+				gl_FragColor = vec4(1.0,1.0,1.0, 1.0);
+
+				gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+
+			}
+
+		</script>
+
+		<script type="x-shader/x-vertex" id="vertexshaderExplo">
+
+			attribute float size;
+
+			varying vec3 vColor;
+			varying float posZ;
+
+			void main() {
+
+				vColor = color;
+
+				posZ = position.z;
+
+				vec4 mvPosition = modelViewMatrix * vec4( position.x,position.y,position.z, 1.0 );
+
+				gl_PointSize = 5000.0/ -mvPosition.z ;
+
+				gl_Position = projectionMatrix * mvPosition;
+				
+
+			}
+
+		</script>
+
+		<script type="x-shader/x-fragment" id="fragmentshaderExplo">
+
+			uniform sampler2D pointTexture;
+
+
+			void main() {
+
+
+				gl_FragColor = vec4( 1.0,1.0,1.0, 1.0);
+
+				gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+
+			}
+
+		</script>
+
+
+		<script type="module">
+
+
+				import * as THREE from './threejs/three.module.js';
+				import { OBJLoader } from './threejs/OBJLoader.js';
+				import { TrackballControls } from './threejs/TrackballControls.js';
+        		import { MTLLoader } from './threejs/MTLLoader.js';
+        		import { FBXLoader } from'./threejs/FBXLoader.js';
+
+        		//On cree le dat.gui pour notre vitesse et notre camera
+        		//Par soucis de simplicite le switch entre les cameras se fait avec un slider et non un bouton
+        		var speed=0;
+        		var cameraTrain=0;
+
+	        	var affichage=function(){
+	        		this.speedTrain=0;
+	        		this.cameraTrain=0;
+	        	}
+	        	window.onload = function(){
+	        		var aff=new affichage(speed);
+	        		var gui=new dat.gui.GUI({autoPlace:true});
+					var vitesseTrain = gui.add(aff,'speedTrain',0,3,1);
+					var cameraFollow=gui.add(aff,'cameraTrain',0,1,1);
+					vitesseTrain.onChange(function(value){
+						speed=value;
+					})
+					cameraFollow.onChange(function(value){
+						cameraTrain=value;
+					})
+					
+				}
+
+	        	//On initialise la plupart de nos variables	
+        		var terrain,cave, rail2, locomotive,wagon, smokeTexture, smokeMaterial, smokeGeo, smokeParticles, p;
+				var rail1 ;
+				var sandGeo, mesh_sand;
+				var u_time;
+				var exploGeo;
+				var mesh_explo;
+				var mesh_exploBis;
+
+				var tunnel = 0;
+
+				var positions = [];
+
+				var positionssand = [];
+
+				var positionsExplo = [];
+
+				var particles,particleCount,particleSystem,pMaterial;
+
+				var container;
+
+				var shaderMaterial;
+
+				var camera,camera2,camera3,scene, renderer, controls;
+	
+				var windowHalfX = window.innerWidth / 2;
+				var windowHalfY = window.innerHeight / 2;
+	
+				var object;
+
+				var mesh_smoke;
+
+				var rand1,rand2
+
+				init();
+				animate();	
+	
+				function init() {
+	
+					container = document.createElement( 'div' );
+					document.body.appendChild( container );
+	
+					// scene
+					scene = new THREE.Scene();
+
+					// creation renderer	
+					renderer = new THREE.WebGLRenderer();
+					renderer.setPixelRatio( window.devicePixelRatio );
+					renderer.setSize( window.innerWidth, window.innerHeight );
+					renderer.setClearColor (0xAAAAAA, 1);
+					container.appendChild( renderer.domElement );
+
+					// camera
+					camera = new THREE.PerspectiveCamera( 80, window.innerWidth / window.innerHeight, 0.1, 4000 );
+					camera.position.z = 400;
+					camera.position.y = -500;
+					camera.focus=30;
+					camera.lookAt( 0, 0, 0 );	
+					scene.add( camera );
+	
+					// controle sur la camera, type trackball
+					controls = new TrackballControls( camera, renderer.domElement );
+					//On cree la deuxieme camera, celle qui suit le train
+					camera2 = new THREE.PerspectiveCamera( 80, window.innerWidth / window.innerHeight, 0.1, 4000 );
+					camera2.position.z = 0;
+					camera2.position.y = 0;
+					camera2.position.x=0;
+					camera2.rotateX(Math.PI/2);
+					camera2.rotateY(Math.PI);
+					
+					if(locomotive)
+					//camera2.lookAt( locomotive.position );	
+					camera2.lookAt(locomotive.position);
+					scene.add( camera2 );
+
+
+
+					//on créé la caméra qui regarde l'explosion et on la place
+					camera3 = new THREE.PerspectiveCamera( 80, window.innerWidth / window.innerHeight, 0.1, 4000 );
+					camera3.position.z = 400;
+					camera3.position.y = 320;
+					camera3.position.x=1100;
+					camera3.up.set(0,0,1); 
+					camera3.lookAt( 200,400 ,200  );	
+					scene.add( camera3 );
+
+
+					// lights
+
+
+					var light = new THREE.PointLight( 0xffd27f, 1.60 );//Donne un effet leger de coucher de soleil
+					var light2 = new THREE.PointLight( 0xFFFFFF, 0.20 );//Evite un contre jour trop important
+					
+					light.position.set( 0,-1200, 300 );
+					light2.position.set( 0,1200, 300 );
+					scene.add( light );
+					scene.add( light2 );
+
+					//On charge une skybox
+					var lien='data/textures/sand/';
+					//Les faces sont dans un ordre different de la normale car sinon la skybox etait pas dans le bon sens. Impossible de savoir pourquoi, la scene semblait tournee par defaut
+					var cote=[lien+'right.png',lien+'left.png',lien+'front.png',lien+'back.png',lien+'top.png',lien+'bottom.png'];
+					var skyBox = new THREE.CubeTextureLoader().load(cote);	
+					scene.background = skyBox;
+
+					//On ajoute du brouillard
+					var fog = new THREE.Fog(0,1500,2000);
+					fog.color=new THREE.Color(0xBEBEBE);
+					scene.fog = fog;
+
+					//On charge la texture et le material du terrain
+					var material = new THREE.MeshPhongMaterial();
+					var texture_terrain = new THREE.TextureLoader().load("data/textures/Terrain/diffuse.png");
+					var material_terrain = new THREE.MeshLambertMaterial( {map: texture_terrain} );
+					material_terrain.reflectivity = 1.0;
+
+
+
+					
+					//Une musique de fond, celle de Thomas le train, desactivee par defaut, heureusement !
+
+					/*var audioL = new THREE.AudioListener();
+					camera.add( audioL );
+
+					
+					var son = new THREE.Audio( audioL );
+
+					var audioLoad = new THREE.AudioLoader();
+					audioLoad .load( 'data/audio/totaudio.mp3', function( buffer ) {
+						son.setBuffer( buffer );
+						son.setLoop( true );
+						son.setVolume( 0.5 );
+						son.play();
+					});*/
+					//Charge le terrain
+					function loadModel() {	
+						terrain.traverse( function ( child ) {	
+							if ( child.isMesh ) 
+							child.material = material_terrain;
+	
+						} );
+	
+						scene.add( terrain );	
+					}
+	
+					// LoadingManager
+					var manager = new THREE.LoadingManager( loadModel );
+					manager.onProgress = function ( item, loaded, total ) {
+						console.log( "Load:", item, "(", loaded, "/", total, ")" );
+					};
+
+					// OBJLoader	
+					var objLoader = new OBJLoader( manager );
+					objLoader.onError = function() {
+						console.log( "Error OBJLoader" );
+					}
+					
+					objLoader.load( 'data/models/TerrainLod4.obj', function ( obj ) {
+						terrain = obj;	
+					});
+
+					
+
+
+					objLoader.onError = function() {
+						console.log( "Error OBJLoader" );
+					}
+
+					//On charge le tunnel, qui est a la base une cave (grotte)
+					var objLoaderCave = new OBJLoader( );
+					objLoaderCave.load('data/models/cave.obj',function(caveObj){
+						cave=caveObj;
+						cave.scale.set(0.075,0.075,0.09);
+						cave.rotateX(90.0*2.0*Math.PI/360.0);	
+						cave.translateZ(-450);
+						cave.translateX(-450);
+						cave.translateY(40);
+						cave.traverse( function ( child ) {	
+							if ( child.isMesh ) 
+							child.material = material_terrain;
+	
+						} );
+						scene.add(cave);
+
+					});
+
+
+					
+
+					//Une tentative de rajouter un soleil mais le rendu artistique etait decevant
+					/*var soleilGeo = new THREE.SphereGeometry(50,50,50);	
+					var soleilText = new THREE.TextureLoader().load('data/textures/soleil.jpg')	;
+					var soleilMat = new THREE.MeshPhongMaterial({map: soleilText, shininess : 100, emissive:0xffea00, emissiveIntensity : 0.5});
+					var soleil = new THREE.Mesh(soleilGeo, soleilMat);
+					soleil.position.set(0,-1750,300);
+					scene.add(soleil);*/
+
+					//On charge le train
+					var mtlLoader = new MTLLoader();
+					mtlLoader.setMaterialOptions({side: THREE.DoubleSide}) ;
+					mtlLoader.setPath("data/models/");
+
+					mtlLoader.load( "thomas.mtl", function( materials ) {
+
+					  materials.preload();
+					  var objLoaderLoco = new OBJLoader();
+					  objLoaderLoco.setMaterials( materials );
+					  objLoaderLoco.setPath("data/models/")
+
+					  objLoaderLoco.load( "thomas.obj", function ( object ) {
+
+						locomotive = object;
+						locomotive.rotateX(90.0*2.0*Math.PI/360.0);
+						locomotive.scale.set(10,10,10);
+						locomotive.translateX(-100.0);
+						locomotive.translateZ(180.0);	//180
+						locomotive.translateY(13.0);
+						scene.add( locomotive );
+						console.log(locomotive);
+						console.log(locomotive.position.y); //la pos récup correspond à celle du y
+
+					  } );
+
+					} );
+					//Tentative de mettre un wagon, abandonne par soucis de temps
+					/*var wagonLoader = new FBXLoader();
+					
+					wagonLoader.setPath("data/models/wagon/");
+					wagonLoader.load( "wagon.fbx", function ( object ) {
+
+						wagon = object;
+						wagon.rotateZ(90.0*2.0*Math.PI/360.0);
+						wagon.rotateX(90.0*2.0*Math.PI/360.0);
+						wagon.scale.set(0.08,0.08,0.08);
+						wagon.translateX(-120.0);
+						wagon.translateZ(-1342.0);	
+						wagon.translateY(20.0);
+						
+						object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+							child.material.side = THREE.DoubleSide;
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+						scene.add( wagon );
+						
+					  } );
+						*/
+
+					//On charge nos rails droits qu'on place en differentes lignes droites
+					var railLoader = new MTLLoader();
+					railLoader.setPath("data/models/rail/");
+					railLoader.load( "rail_droit.mtl", function ( materials ) {
+
+					  materials.preload();
+					  var objLoaderRail = new OBJLoader();
+					  objLoaderRail.setMaterials( materials );
+					  objLoaderRail.setPath("data/models/rail/")
+					  objLoaderRail.load( "rail_droit.obj", function ( object ) {
+						for (var i =0; i<150; i++) {
+							if(i<17){
+								var new_mesh = object.clone();
+								new_mesh.rotateX(90.0*2.0*Math.PI/360.0);
+								new_mesh.scale.set(0.1,0.1,0.1);
+								new_mesh.translateX(-100.0);
+								new_mesh.translateZ(100.0+i*30);	
+								new_mesh.translateY(10.0);	
+							}else{
+								if(i<29){
+									var new_mesh = object.clone();
+									new_mesh.rotateX(90.0*2.0*Math.PI/360.0);
+									new_mesh.rotateY(90.0*2.0*Math.PI/360.0);
+									new_mesh.scale.set(0.1,0.1,0.1);
+									new_mesh.translateX(-624.5);
+									new_mesh.translateZ(-145.5-(i-17)*30);	
+									new_mesh.translateY(10.0);
+								}else{
+									if(i<72){
+										var new_mesh = object.clone();
+										new_mesh.rotateX(90.0*2.0*Math.PI/360.0);
+										new_mesh.scale.set(0.1,0.1,0.1);
+										new_mesh.translateX(-519.0);
+										new_mesh.translateZ(-1550.0+i*30);	
+										new_mesh.translateY(10.0);	
+									}else{
+										if(i<96){
+											var new_mesh = object.clone();
+											new_mesh.rotateX(90.0*2.0*Math.PI/360.0);
+											new_mesh.scale.set(0.1,0.1,0.1);
+											new_mesh.translateX(215.5-(i-72)*30);
+											new_mesh.translateZ(-724.5);	
+											new_mesh.translateY(10.0);
+											new_mesh.rotateY(90.0*2.0*Math.PI/360.0);
+
+										}else{
+											if(i<120){
+												var new_mesh = object.clone();
+												new_mesh.rotateX(90.0*2.0*Math.PI/360.0);
+												new_mesh.scale.set(0.1,0.1,0.1);
+												new_mesh.translateX(260.5);
+												new_mesh.translateZ(-3560.0+i*30);	
+												new_mesh.translateY(10.0);	
+
+											}else{
+												if(i<130){
+													var new_mesh = object.clone();
+													new_mesh.rotateX(90.0*2.0*Math.PI/360.0);
+													new_mesh.rotateY(90.0*2.0*Math.PI/360.0);
+													new_mesh.scale.set(0.1,0.1,0.1);
+													new_mesh.translateX(-54.5);
+													new_mesh.translateZ(215-(i-120)*30);	
+													new_mesh.translateY(10.0);
+												}
+											}
+										}
+									}
+								}	
+							}
+								object.traverse( function ( child ) {
+									if ( child.isMesh ) {
+										//child.material.side = THREE.DoubleSide;	
+
+									}
+								});
+								scene.add(new_mesh);
+						}
+						
+					  } );
+					});
+					
+
+					var railVirageLoader=new MTLLoader();
+
+					railVirageLoader.setPath("data/models/rail/");
+					railVirageLoader.load( "rail_courbe.mtl", function ( materialsVirageRail ) {
+
+					  materialsVirageRail.preload();
+					  var objLoaderRailVirage = new OBJLoader();
+					  objLoaderRailVirage.setMaterials( materialsVirageRail );
+					  objLoaderRailVirage.setPath("data/models/rail/")
+					  objLoaderRailVirage.load( "rail_courbe.obj", function ( virageRail ) {
+						
+							for(var i=0;i<7;i++){
+								if(i==1){
+									var railVirage=virageRail.clone();
+									railVirage.scale.set(0.1,0.1,0.1);
+									railVirage.translateX(-147.0);
+									railVirage.translateZ(10);	
+									railVirage.translateY(-625.0);
+									railVirage.rotateX(Math.PI/2);
+									railVirage.rotateY(-Math.PI/2);		
+								}
+								if(i==2){
+									var railVirage=virageRail.clone();
+									railVirage.scale.set(0.1,0.1,0.1);
+									railVirage.translateX(-519.5);
+									railVirage.translateZ(10);	
+									railVirage.translateY(-578);
+									railVirage.rotateX(Math.PI/2);
+									railVirage.rotateY(-Math.PI);	
+								}
+								if(i==3){
+									var railVirage=virageRail.clone();
+									railVirage.scale.set(0.1,0.1,0.1);
+									railVirage.translateX(-472.5);
+									railVirage.translateZ(10);	
+									railVirage.translateY(724.5);
+									railVirage.rotateX(Math.PI/2);
+									railVirage.rotateY(Math.PI/2);	
+								}
+								if(i==4){
+									var railVirage=virageRail.clone();
+									railVirage.scale.set(0.1,0.1,0.1);
+									railVirage.translateX(260.5);
+									railVirage.translateZ(10);	
+									railVirage.translateY(677.5);
+									railVirage.rotateX(Math.PI/2);	
+								}
+								if(i==5){
+									var railVirage=virageRail.clone();
+									railVirage.scale.set(0.1,0.1,0.1);
+									railVirage.translateX(213.5);
+									railVirage.translateZ(10);	
+									railVirage.translateY(-55);
+									railVirage.rotateX(Math.PI/2);
+									railVirage.rotateY(-Math.PI/2);	
+								}
+								if(i==6){
+									var railVirage=virageRail.clone();
+									railVirage.scale.set(0.1,0.1,0.1);
+									railVirage.translateX(-53.5);
+									railVirage.translateZ(10);	
+									railVirage.translateY(-54.5);
+									railVirage.rotateX(Math.PI/2);
+									railVirage.rotateY(Math.PI/2);	
+								}
+								
+							virageRail.traverse( function ( child ) {
+								if(child.isMesh){
+									child.material.side = THREE.DoubleSide;
+								}
+							});
+							scene.add(railVirage);
+						}
+					  });
+					});
+					
+					//On charge le batiment du saloon
+					var saloonLoader = new MTLLoader();
+
+					saloonLoader.setPath("data/models/saloon/");
+					saloonLoader.load( "saloon.mtl", function ( materials ) {
+
+					  materials.preload();
+					  var saloonLoader = new OBJLoader();
+					  saloonLoader.setMaterials( materials );
+					  saloonLoader.setPath("data/models/saloon/")
+					  saloonLoader.load( "saloon.obj", function ( object ) {
+						
+								var new_mesh = object.clone();
+								new_mesh.rotateX(90.0*2.0*Math.PI/360.0);
+								new_mesh.rotateY(90.0*5.0*Math.PI/360.0);
+								new_mesh.translateX(440.0);
+								new_mesh.translateZ(-510.0);	
+								new_mesh.translateY(10.0);	
+								scene.add(new_mesh);
+								object.traverse( function ( child ) {
+									if ( child.isMesh ) {
+										child.material.side = THREE.DoubleSide;	
+
+									}
+								});
+						
+					  } );
+					});
+
+					//Creation des particules servant a lexplosion
+					//On cree toutes nos variables
+					var colorsExplo = [];
+					var colorExplo = new THREE.Color();
+					var sizesExplo = [];
+					var exploTexture = new THREE.TextureLoader().load('data/textures/lightBall.png');
+					var exploMaterial = new THREE.MeshPhongMaterial({map: exploTexture,depthWrite:false, transparent: true});
+					exploGeo = new THREE.BufferGeometry();
+					//On remplit les differents attributs de notre buffer geometry dans la boucle for
+					for(var i =0; i<15000;i++){
+						colorExplo.setRGB(0.5,0.5,0.5);
+						colorsExplo.push(colorExplo.r,colorExplo.g,colorExplo.b);
+						sizesExplo.push(30);
+						//On genere nos particules dans une sphere pour faciliter le rendu de lexplosion
+						var direction = new THREE.Vector3(Math.random()-0.5,Math.random()-0.5,Math.random()-0.5).normalize();
+						var distance = Math.random()+1;
+						var exploCercle = direction.multiplyScalar(distance);
+						positionsExplo.push(exploCercle.x+258,exploCercle.y+500,exploCercle.z+30);
+					}
+					//On passe la texture au shader
+					var uniformsExplo = {
+											pointTexture: {value:exploTexture}
+										};
+					var shaderMaterialExplo = new THREE.ShaderMaterial({
+						uniforms: uniformsExplo,
+						vertexShader: document.getElementById( 'vertexshaderExplo' ).textContent,
+						fragmentShader: document.getElementById( 'fragmentshaderExplo' ).textContent,
+						depthTest: true,
+						transparent: true,
+						vertexColors: true
+					})
+					exploGeo.setAttribute( 'size', new THREE.Float32BufferAttribute( sizesExplo, 1 ).setUsage( THREE.DynamicDrawUsage ) );
+				    exploGeo.setAttribute( 'color', new THREE.Float32BufferAttribute( colorsExplo, 3 ) );
+				    exploGeo.setAttribute('position', new THREE.Float32BufferAttribute( positionsExplo, 3 ));
+				    //Le mesh est cree mais ne sera ajoute a la scene que lors du passage du train
+				    mesh_explo = new THREE.Points(exploGeo, shaderMaterialExplo);
+				    //Le frustrumCulled permet deviter que selon certains angles de camera les particules disparaissent
+				    mesh_explo.frustumCulled = false;
+				    mesh_exploBis = mesh_explo.clone();
+				    
+				    //Globalement la meme chose mais pour la tempete de sable
+					var colorssand = [];
+					var colorsand = new THREE.Color();
+					var sizessand = [];
+					var sandTexture = new THREE.TextureLoader().load('data/textures/sand.png');
+					var sandMaterial = new THREE.MeshLambertMaterial({map: smokeTexture, transparent: true, depthWrite : false, size : 1, overdraw : 1});
+					sandGeo = new THREE.BufferGeometry();
+
+
+					for (var i =0; i < 30000; i++) {
+
+						colorsand.setRGB(0.1,0.1,0.1);
+					    colorssand.push(colorsand.r,colorsand.g,colorsand.b);
+					    sizessand.push( 20 );
+					    //Nos particules partent du cote de la carte et la traversent horizontalement
+					    var sandX = Math.random()*2000-1000;
+					    var sandY = Math.random()*2000-1000;
+						var sandZ = Math.random()*2000;
+
+						positionssand.push(sandX,sandY,sandZ);
+					}
+
+					var uniformssand = {
+				    				pointTexture: { value: sandTexture },
+									};
+
+					var shaderMaterialsand = new THREE.ShaderMaterial({
+						uniforms : uniformssand,
+				    	vertexShader: document.getElementById( 'vertexshadersand' ).textContent,
+						fragmentShader: document.getElementById( 'fragmentshadersand' ).textContent,
+						depthTest: true,
+						transparent: true,
+						vertexColors: true
+					});
+
+					sandGeo.setAttribute( 'size', new THREE.Float32BufferAttribute( sizessand, 1 ).setUsage( THREE.DynamicDrawUsage ) );
+				    sandGeo.setAttribute( 'color', new THREE.Float32BufferAttribute( colorssand, 3 ) );
+				    sandGeo.setAttribute('position', new THREE.Float32BufferAttribute( positionssand, 3 ));
+
+				    mesh_sand = new THREE.Points(sandGeo, shaderMaterialsand);
+				    mesh_sand.frustumCulled = false;
+				    scene.add(mesh_sand);
+
+	
+					//Chargement des particules de fumee. Globalement la meme chose que precedemment
+					var colors = [];	
+					var color = new THREE.Color();
+					var sizes = [];
+
+					smokeTexture = new THREE.TextureLoader().load('data/textures/blanc.png');
+				    smokeMaterial = new THREE.MeshLambertMaterial({map: smokeTexture, depthWrite : false, size : 1, overdraw : 1});
+				    smokeGeo = new THREE.BufferGeometry();
+
+
+				    
+
+
+				    for (p = 0; p < 10000; p++) {
+				    	//On met une coordonee par defaut car de toute facon elles suivront la locomotive des qu'elle avancera
+					    positions.push(0,0,60);
+
+					    color.setRGB(0.1,0.1,0.1);
+					    colors.push(color.r,color.g,color.b);
+					    sizes.push( 20 );
+				    }
+
+				    var uniforms = {
+				    				pointTexture: { value: smokeTexture }
+				    				
+									};
+				    shaderMaterial = new THREE.ShaderMaterial({
+				    	uniforms : uniforms,
+				    	vertexShader: document.getElementById( 'vertexshader' ).textContent,
+						fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
+						depthTest: false,
+						transparent: true,
+						vertexColors: true
+				    	});
+
+
+				    smokeGeo.setAttribute( 'size', new THREE.Float32BufferAttribute( sizes, 1 ).setUsage( THREE.DynamicDrawUsage ) );
+				    smokeGeo.setAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
+				    smokeGeo.setAttribute('position', new THREE.Float32BufferAttribute( positions, 3 ));
+
+				    mesh_smoke = new THREE.Points(smokeGeo, shaderMaterial);
+				    mesh_smoke.frustumCulled = false;
+				    scene.add(mesh_smoke);
+
+
+
+					// gestion redimensionnement fenetre
+					window.addEventListener( 'resize', onWindowResize, false );
+				}
+	
+				// gestion redimensionnement fenetre
+				function onWindowResize() {
+	
+					windowHalfX = window.innerWidth / 2;
+					windowHalfY = window.innerHeight / 2;
+	
+					camera.aspect = window.innerWidth / window.innerHeight;
+					camera.updateProjectionMatrix();
+	
+					renderer.setSize( window.innerWidth, window.innerHeight );
+				}
+
+				var cptV1=0;
+				var cptV2=0;
+				var cptV3=0;
+				var cptV4=0;
+				var cptV5=0;
+				var cptV6=0;
+
+				var boolV1=false;
+				var boolV2=false;
+				var boolV3=false;
+				var boolV4=false;
+				var boolV5=false;
+				var boolV6=false;
+				var boolTP=false;
+				var boolExplo = false;		
+				var boolReplacement=false;
+				var exploSortie=false;
+
+				var attente=0;
+
+				var locoX=0;
+				var locoY=-35;
+				
+
+		
+				function animate(t) {	
+					controls.update();
+					render();
+					requestAnimationFrame( animate );
+					var positionsAnimate = smokeGeo.attributes.position.array;
+					var positionsSandAnimate = sandGeo.attributes.position.array;
+					var positionExploAnimate = exploGeo.attributes.position.array;
+					if(locomotive){
+						
+						for(var j =0; j<18*speed; j++){
+
+						for (var i = 0 ; i < positionsAnimate.length ; i=i+3) {
+
+						var signeX = Math.sign(locoX);
+						var signeY = Math.sign(locoY);
+					  	var
+					  	 
+					  	  
+					      pos = new THREE.Vector3(locomotive.position.x-positionsAnimate[i]+locoX,locomotive.position.y-positionsAnimate[i+1]+locoY,0),
+					      rand1 = Math.random()-0.5,
+						  rand2 = Math.random()-0.5,
+						  rand3 = Math.random()*6,
+						  rand4 = Math.random()*20,
+
+						  randTest = Math.random();
+						  
+						  var longueur = pos.length();
+
+						  if(positionsAnimate[i+2]>(150+rand4)-tunnel){
+					      	positionsAnimate[i+2]=60;
+					      }
+						
+					      if(longueur>(positionsAnimate[i+2]-55)*0.3){
+					      	positionsAnimate[i]=positionsAnimate[i]+pos.x*0.9;
+					      	positionsAnimate[i+1]=positionsAnimate[i+1]+pos.y*0.9;
+					      	
+					      }else{
+					      	positionsAnimate[i]=positionsAnimate[i]+rand1;
+						 	positionsAnimate[i+1]=positionsAnimate[i+1]+rand2;
+						 	if(randTest>0.9){
+						 		positionsAnimate[i+2]=positionsAnimate[i+2]+rand3;
+							}
+
+					      }
+					      if (positionsAnimate[i+2]<(60+rand3) && locomotive.position.x>=(-520.16-5)&&locomotive.position.x<=(-520.16+5)&&locomotive.position.y>=(10)&&locomotive.position.y<=(600)) {
+					      	positionsAnimate[i+2]=60;
+					      	tunnel = 150;
+					      	shaderMaterial.depthTest = true;
+					      }else{
+					      	tunnel = 0;
+					      	shaderMaterial.depthTest = false;
+					      }
+
+
+						  
+					  }
+					 
+
+
+					}
+					smokeGeo.attributes.position.needsUpdate = true;
+
+
+					for(var i = 0; i<positionsSandAnimate.length;i=i+3){
+						var boolX = positionsSandAnimate[i]<-1000 || positionsSandAnimate[i]>1000;
+						var boolY = positionsSandAnimate[i+1]<-1000 || positionsSandAnimate[i+1]>1000;
+						var boolZ = positionsSandAnimate[i+2]<-1000 || positionsSandAnimate[i+2]>1000;
+						var randSandY = Math.random()*2-1;
+						var randSandZ = Math.random()*2-1;
+						var randSandTest = Math.random();
+						if(boolX){
+							positionsSandAnimate[i]=-1000;
+							positionsSandAnimate[i+1]=Math.random()*2000-1000;
+							positionsSandAnimate[i+2]=Math.random()*2000;
+						}
+						positionsSandAnimate[i]=positionsSandAnimate[i]+Math.random()*5;
+						if(randSandTest>0.6){
+							positionsSandAnimate[i+1]=positionsSandAnimate[i+1]+randSandY;
+							positionsSandAnimate[i+2]=positionsSandAnimate[i+2]+randSandZ;
+						}
+					}
+					sandGeo.attributes.position.needsUpdate = true;
+
+					if(boolExplo){
+						//console.log(positionExploAnimate.length);
+					for(var i=0;i<positionExploAnimate.length;i=i+3){
+						var vecExplo = new THREE.Vector3(positionExploAnimate[i]-258,positionExploAnimate[i+1]-500,positionExploAnimate[i+2]-30);
+						var longueurExplo = vecExplo.length();
+						positionExploAnimate[i]=positionExploAnimate[i]+vecExplo.x*0.02;
+						positionExploAnimate[i+1]=positionExploAnimate[i+1]+vecExplo.y*0.02;
+						positionExploAnimate[i+2]=positionExploAnimate[i+2]+vecExplo.z*0.02;
+
+
+
+					}
+					exploGeo.attributes.position.needsUpdate = true;
+
+						
+					}
+
+					if(exploSortie){
+							for(var i=0;i<positionExploAnimate.length;i=i+3){
+						var vecExplo = new THREE.Vector3(positionExploAnimate[i]-258,positionExploAnimate[i+1],positionExploAnimate[i+2]-30);
+						var longueurExplo = vecExplo.length();
+						positionExploAnimate[i]=positionExploAnimate[i]-vecExplo.x*4/longueurExplo;
+						positionExploAnimate[i+1]=positionExploAnimate[i+1]-vecExplo.y*4/longueurExplo;
+						positionExploAnimate[i+2]=positionExploAnimate[i+2]-vecExplo.z*4/longueurExplo;
+
+					}
+					exploGeo.attributes.position.needsUpdate = true;
+					}
+				}
+					
+
+					// l'axe des Z de la locomotive correspond à l'axe des Y du wagon 
+					// dans le sens inverse 
+					//on test les posistion de notre locomotive pour lesquels on doit prendre un virage
+					if(locomotive){
+						console.log(locoX,locoY);
+						if(cameraTrain==1){
+								if(locoX<0){
+									camera2.position.x=locomotive.position.x+locoX*(-3);
+									camera2.position.y=locomotive.position.y+50;
+								}
+								if(locoX>0){
+									camera2.position.x=locomotive.position.x+locoX*(-3);
+									camera2.position.y=locomotive.position.y-50;
+								}
+
+								if(locoY<-30){
+									camera2.position.x=locomotive.position.x-50;
+									camera2.position.y=locomotive.position.y+locoY*(-3);
+								}
+								if(locoY>30){
+									camera2.position.x=locomotive.position.x+50;
+									camera2.position.y=locomotive.position.y+locoY*(-3);
+								}
+								camera2.position.z=locomotive.position.z+110;
+						}
+						//pour les positions d'éntrée de virage, on regarde en fonction de la vitesse pour
+						//l'axe dans lequel nous sommes en train de progresser. Et pour l'autre axe on prend la plus grande vitesse possible que l'on divise par 2 car notre position est impacté par le virage précédent
+
+						if(locomotive.position.y >= (-607.5-speed/2) && locomotive.position.y<=(-607.5+speed/2) && locomotive.position.x<=(-100+1.5) && locomotive.position.x>=(-100-1.5)){
+							boolV1=true;
+						}
+						if(boolV1){
+							cptV1=cptV1+speed;
+							locoY=locoY+35/(30/speed);
+							locoX=locoX-35/(30/speed);
+							locomotive.rotateY(-(speed/30)*90*Math.PI/180);
+							camera2.rotateY(-(speed/30)*90*Math.PI/180);
+							if(cptV1>=30){
+								boolV1=false;
+								cptV1=0;
+								
+							}
+						}
+						
+					
+						if(locomotive.position.x>=(-502-speed/2)&&locomotive.position.x<=(-502+speed/2)&&locomotive.position.y >= (-626-1.5) && locomotive.position.y<=(-626+1.5)){
+							boolV2=true;													
+						}
+						if(boolV2){
+							cptV2=cptV2+speed;
+							locoY=locoY+35/(30/speed);
+							locoX=locoX+35/(30/speed);
+							locomotive.rotateY(-(speed/30)*90*Math.PI/180);
+							camera2.rotateY(-(speed/30)*90*Math.PI/180);
+							if(cptV2>=30){
+								boolV2=false;
+								cptV2=0;
+							}
+						}
+
+						//on recentre discrètement le train sur les rails pendant qu'il est dans le tunnel on prend un intervalle plus large pour etre sur de recentré, vu que l'on se concentre sur un point en milieu de ligne droite ça ne risque pas de poser problème dans le virage
+						if(locomotive.position.x>=(-520.16-5)&&locomotive.position.x<=(-520.16+5)&&locomotive.position.y>=(225-1.5)&&locomotive.position.y<=(225+1.5)){
+							boolReplacement=true;
+						}
+						if(boolReplacement){
+							locomotive.position.x=-520;
+							locomotive.position.y=227;
+							boolReplacement=false;
+						}
+
+						if(locomotive.position.x>=(-520.16-speed/2)&&locomotive.position.x<=(-520.16+speed/2)&&locomotive.position.y>=(705-1.5)&&locomotive.position.y<=(705+1.5)){
+							boolV3=true;
+						}
+						if(boolV3){
+							cptV3=cptV3+speed;
+							locoY=locoY-35/(30/speed);
+							locoX=locoX+35/(30/speed);
+							locomotive.rotateY(-(speed/30)*90*Math.PI/180);
+							camera2.rotateY(-(speed/30)*90*Math.PI/180);
+							if(cptV3>=30){
+								boolV3=false;
+								cptV3=0;
+							}
+						}
+
+						if(locomotive.position.y>=(723-speed/2)&&locomotive.position.y<=(723+speed/2)&&locomotive.position.x>=(240-1.5)&&locomotive.position.x<=(240+1.5)){
+							boolV4=true;
+						}
+						if (boolV4){
+							cptV4=cptV4+speed;1.5
+							locoY=locoY-35/(30/speed);
+							locoX=locoX-35/(30/speed);
+							locomotive.rotateY(-(speed/30)*90*Math.PI/180);
+							camera2.rotateY(-(speed/30)*90*Math.PI/180);
+							if(cptV4>=30){
+								boolV4=false;
+								cptV4=0;
+							}
+						}
+
+
+						//on gère la téléportation de notre train
+						if(locomotive.position.x>=(258-3)&&locomotive.position.x<=(258+3)&&locomotive.position.y<=(520+1.5)&&locomotive.position.y>=(520-1.5)){
+							boolTP=true;
+							boolExplo=true;
+							cameraTrain=2;
+						}
+						if(boolTP){
+							if(attente==0){
+								scene.add(mesh_explo);
+								scene.remove(mesh_smoke);
+							}
+							speed=0;
+							attente=attente+1;
+							if(attente==300){
+								exploSortie=true;
+								boolExplo=false;
+							}
+							if(attente==180){
+								locomotive.position.x=258;
+								locomotive.position.y=-5000;
+								
+								
+							}
+							if(attente>=600){
+								locomotive.position.x=258;
+								locomotive.position.y=10;
+								boolTP=false;
+								exploSortie=false;
+								speed=2;
+								attente=0;
+								if(cameraTrain==2){
+										cameraTrain=1;
+									}
+
+								for(var i =0; i<positionExploAnimate.length;i=i+3){
+									console.log("test");
+									var direction = new THREE.Vector3(Math.random()-0.5,Math.random()-0.5,Math.random()-0.5).normalize();
+									var distance = Math.random()+1;
+									var exploCercle = direction.multiplyScalar(distance);
+									positionExploAnimate[i]=exploCercle.x+258;
+									positionExploAnimate[i+1]=exploCercle.y+500;
+									positionExploAnimate[i+2]=exploCercle.z+30;
+								}
+								
+								
+								
+								scene.add(mesh_smoke);
+								scene.remove(mesh_explo);
+							}
+						}
+						exploGeo.attributes.position.needsUpdate = true;
+
+						if(locomotive.position.x<=(258+(1.5))&&locomotive.position.x>=(258-(1.5))&&locomotive.position.y<=(-41.5+speed/2)&&locomotive.position.y>=(-41.5-speed/2)){
+							boolV5=true;
+						}
+						if(boolV5){
+							cptV5=cptV5+speed;
+							locoY=locoY+35/(30/speed);
+							locoX=locoX-35/(30/speed);
+							locomotive.rotateY(-(speed/30)*90*Math.PI/180);
+							camera2.rotateY(-(speed/30)*90*Math.PI/180);
+							if(cptV5>=30){
+								boolV5=false;
+								cptV5=0;
+							}
+						}
+						if(locomotive.position.y<=(-60+speed/2) && locomotive.position.y>=(-60-speed/2)&&locomotive.position.x>=(-83-1.5)&&locomotive.position.x<=(-83+1.5)){
+							boolV6=true;
+						}
+						if(boolV6){
+							cptV6=cptV6+speed;
+							locoY=locoY-35/(30/speed);
+							locoX=locoX+35/(30/speed);
+							locomotive.rotateY((speed/30)*90*Math.PI/180);
+							camera2.rotateY((speed/30)*90*Math.PI/180);
+							if(cptV6>=30){
+								boolV6=false;
+								cptV6=0;
+							}
+						}
+
+						//on fait constamment avancer notre locomotive par la vitesse
+						locomotive.translateZ(speed);
+						
+					}
+					
+			
+
+				update();
+
+				}
+				function update() {
+
+  				
+
+
+
+ 				if(cameraTrain==0)
+  					renderer.render(scene, camera);
+  				else
+  					if(cameraTrain==1){
+  						renderer.render(scene,camera2);
+  					}else{
+  						renderer.render(scene,camera3);
+  					}
+				}
+
+
+
+	
+				function render() {
+					
+				if(cameraTrain==0)
+					renderer.render( scene, camera );
+				else{
+					if(cameraTrain==2){
+						renderer.render(scene,camera2);
+					}else{
+						renderer.render(scene,camera3);
+					}
+				}
+				}
+	
+			</script>
+</body></html>
